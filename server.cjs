@@ -8,7 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const SECRET_KEY = process.env.SECRET_KEY || 'your_super_secret_key_here'; // In production, use environment variables
 
-app.use(cors());
+// Allow all origins specifically to fix CORS for frontend
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // Initialize SQLite Database
@@ -72,10 +73,10 @@ const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-    if (!token) return res.sendStatus(401);
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
 
     jwt.verify(token, SECRET_KEY, (err, user) => {
-        if (err) return res.sendStatus(403);
+        if (err) return res.status(403).json({ error: "Forbidden" });
         req.user = user;
         next();
     });
@@ -83,7 +84,7 @@ const authenticateToken = (req, res, next) => {
 
 // --- AUTHENTICATION ROUTES ---
 
-app.post('/api/register', (req, res) => {
+app.post(['/api/register', '/register'], (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
@@ -101,7 +102,7 @@ app.post('/api/register', (req, res) => {
     });
 });
 
-app.post('/api/login', (req, res) => {
+app.post(['/api/login', '/login'], (req, res) => {
     const { email, password } = req.body;
 
     db.get(`SELECT * FROM users WHERE email = ?`, [email], (err, user) => {
@@ -238,6 +239,11 @@ app.put('/api/ideas/:id', authenticateToken, (req, res) => {
             }
         );
     });
+});
+
+// Catch-all 404 handler that returns JSON
+app.use((req, res) => {
+    res.status(404).json({ error: "Route not found" });
 });
 
 app.listen(PORT, () => {
