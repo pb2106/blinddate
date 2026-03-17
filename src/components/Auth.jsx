@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { auth } from '../firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { Rocket } from 'lucide-react';
 
-const Auth = () => {
+const Auth = ({ onLoginSuccess }) => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -12,14 +10,26 @@ const Auth = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const endpoint = isLogin ? `${API_URL}/login` : `${API_URL}/register`;
+
         try {
-            if (isLogin) {
-                await signInWithEmailAndPassword(auth, email, password);
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                onLoginSuccess(data.user, data.token);
             } else {
-                await createUserWithEmailAndPassword(auth, email, password);
+                setError(data.error || 'Authentication failed');
             }
         } catch (err) {
-            setError(err.message);
+            console.error(err);
+            setError("Cannot connect to server.");
         }
     };
 

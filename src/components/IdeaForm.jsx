@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { X, Send } from 'lucide-react';
 import { CATEGORIES, DIFFICULTY_LEVELS, MARKET_POTENTIALS } from '../data/constants';
 
-function IdeaForm({ onClose, onSubmit }) {
+function IdeaForm({ onClose, onSubmit, defaultIdea = null }) {
     const [formData, setFormData] = useState({
-        title: '',
-        category: CATEGORIES[0],
-        difficulty: DIFFICULTY_LEVELS[0].value,
-        marketPotential: MARKET_POTENTIALS[0],
-        description: '',
-        problemStatement: ''
+        title: defaultIdea?.title || '',
+        category: defaultIdea?.category || CATEGORIES[0],
+        difficulty: defaultIdea?.difficulty || DIFFICULTY_LEVELS[0].value,
+        marketPotential: defaultIdea?.marketPotential || MARKET_POTENTIALS[0],
+        description: defaultIdea?.description || '',
+        problemStatement: defaultIdea?.problemStatement || '',
+        expiryHours: '', // empty means no expiry
+        visibility: defaultIdea?.visibility || 'Active'
     });
 
     const handleChange = (e) => {
@@ -92,6 +94,36 @@ function IdeaForm({ onClose, onSubmit }) {
                                 <option key={market} value={market}>{market}</option>
                             ))}
                         </select>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="form-group">
+                            <label htmlFor="visibility">Visibility</label>
+                            <select
+                                id="visibility"
+                                name="visibility"
+                                className="form-control"
+                                value={formData.visibility}
+                                onChange={handleChange}
+                            >
+                                <option value="Active">Active (Public)</option>
+                                <option value="Hidden">Hidden</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="expiryHours">Auto Archive (Hours)</label>
+                            <input
+                                type="number"
+                                id="expiryHours"
+                                name="expiryHours"
+                                className="form-control"
+                                placeholder={defaultIdea ? 'Currently running' : 'Optional (e.g. 24)'}
+                                min="1"
+                                value={formData.expiryHours}
+                                onChange={handleChange}
+                                disabled={defaultIdea !== null} // Prevent changing expiry on edit per standard rules
+                            />
+                        </div>
                     </div>
 
                     <div className="form-group">

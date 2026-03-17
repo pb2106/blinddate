@@ -5,15 +5,18 @@ import IdeaCard from './components/IdeaCard';
 import Statistics from './components/Statistics';
 import FilterPanel from './components/FilterPanel';
 import Auth from './components/Auth';
-
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
+import ChatBot from './components/ChatBot';
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  const [token, setToken] = useState(() => localStorage.getItem('authToken'));
   const [ideas, setIdeas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingIdea, setEditingIdea] = useState(null);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark' ||
@@ -26,13 +29,7 @@ function App() {
   const [difficultyFilter, setDifficultyFilter] = useState('');
   const [marketFilter, setMarketFilter] = useState('');
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoadingAuth(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
     if (isDarkMode) {
@@ -45,92 +42,129 @@ function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    const fetchIdeas = async () => {
-      if (!user) return;
-      try {
-        const q = query(collection(db, 'ideas'), orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        const fetchedIdeas = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setIdeas(fetchedIdeas);
-      } catch (error) {
-        console.error("Error fetching ideas: ", error);
-      }
-    };
-
-    if (user) {
+    if (user && token) {
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      localStorage.setItem('authToken', token);
       fetchIdeas();
+    } else {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('authToken');
+      setIdeas([]);
     }
-  }, [user]);
+  }, [user, token]);
 
-  const toggleTheme = () => setIsDarkMode(prev => !prev);
-
-  const handleLogout = async () => {
+  const fetchIdeas = async () => {
     try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error signing out: ", error);
+      const res = await fetch(`${API_URL}/ideas`);
+      if (res.ok) {
+        const data = await res.json();
+        setIdeas(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch ideas", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleAddIdea = async (newIdea) => {
-    // Basic validation & Check duplicate titles locally
-    if (!newIdea.title.trim() || !newIdea.description.trim() || !newIdea.problemStatement.trim()) {
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
+
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+  };
+
+  const handleOpenForm = (idea = null) => {
+    setEditingIdea(idea);
+    setIsFormOpen(true);
+  };
+
+  const handleCloseForm = () => {
+    setEditingIdea(null);
+    setIsFormOpen(false);
+  };
+
+  const handleAddIdea = async (ideaData) => {
+    if (!ideaData.title.trim() || !ideaData.description.trim() || !ideaData.problemStatement.trim()) {
       alert('Please fill in all required fields.');
       return false;
     }
 
-    if (ideas.some(idea => idea.title.toLowerCase() === newIdea.title.toLowerCase())) {
-      alert('An idea with this title already exists!');
-      return false;
-    }
-
     try {
-      const ideaEntry = {
-        ...newIdea,
-        upvotes: 0,
-        createdAt: new Date().toISOString(),
-        userId: user.uid
-      };
-      const docRef = await addDoc(collection(db, 'ideas'), ideaEntry);
-
-      setIdeas([{ id: docRef.id, ...ideaEntry }, ...ideas]);
-      setIsFormOpen(false);
+      if (editingIdea) {
+        const res = await fetch(`${API_URL}/ideas/${editingIdea.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(ideaData)
+        });
+        if (!res.ok) throw new Error("Failed to update");
+      } else {
+        const res = await fetch(`${API_URL}/ideas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(ideaData)
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed to create");
+      }
+      await fetchIdeas();
+      handleCloseForm();
       return true;
-    } catch (error) {
-      console.error("Error adding idea: ", error);
-      alert('Failed to save idea to Firebase. Did you set up the firebaseConfig correctly?');
+    } catch (err) {
+      alert(err.message);
       return false;
     }
   };
 
   const handleUpvote = async (id) => {
     try {
-      const ideaToUpdate = ideas.find(idea => idea.id === id);
-      const ideaRef = doc(db, 'ideas', id);
-      await updateDoc(ideaRef, {
-        upvotes: ideaToUpdate.upvotes + 1
+      const res = await fetch(`${API_URL}/ideas/${id}/upvote`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      setIdeas(ideas.map(idea =>
-        idea.id === id ? { ...idea, upvotes: idea.upvotes + 1 } : idea
-      ));
-    } catch (error) {
-      console.error("Error upvoting: ", error);
-      alert('Failed to upvote idea on Firebase.');
+      if (res.ok) fetchIdeas();
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  if (loadingAuth) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: 'var(--bg-color)', color: 'var(--text-primary)' }}>Loading...</div>;
-  }
+  const handleFavorite = async (idea) => {
+    try {
+      const res = await fetch(`${API_URL}/ideas/${idea.id}/favorite`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) fetchIdeas();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleView = async (id) => {
+    try {
+      await fetch(`${API_URL}/ideas/${id}/view`, { method: 'POST' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLoginSuccess = (userData, userToken) => {
+    setUser(userData);
+    setToken(userToken);
+  };
 
   if (!user) {
-    return <Auth />;
+    return <Auth onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // Filter ideas based on state, handling visibility and archived logic on the client
+  // Only show active and unarchived ideas, UNLESS the user owns the idea
   const filteredIdeas = ideas.filter(idea => {
+    const isOwner = idea.userId === user.id;
+
+    if (!isOwner && (idea.visibility === 'Hidden' || idea.isArchived)) {
+      return false;
+    }
+
     const matchesSearch = idea.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       idea.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       idea.problemStatement.toLowerCase().includes(searchQuery.toLowerCase());
@@ -140,8 +174,6 @@ function App() {
 
     return matchesSearch && matchesCategory && matchesDifficulty && matchesMarket;
   });
-
-  const sortedIdeas = [...filteredIdeas].sort((a, b) => b.upvotes - a.upvotes);
 
   return (
     <div className="app-container">
@@ -167,7 +199,7 @@ function App() {
           <button className="icon-btn" onClick={handleLogout} aria-label="Log Out" title="Log Out">
             <LogOut size={20} />
           </button>
-          <button className="btn-primary" onClick={() => setIsFormOpen(true)}>
+          <button className="btn-primary" onClick={() => handleOpenForm()}>
             <Plus size={20} />
             Submit Idea
           </button>
@@ -176,7 +208,7 @@ function App() {
 
       <main className="dashboard-layout">
         <aside className="sidebar">
-          <Statistics ideas={ideas} />
+          <Statistics ideas={filteredIdeas} />
           <FilterPanel
             categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter}
             difficultyFilter={difficultyFilter} setDifficultyFilter={setDifficultyFilter}
@@ -187,13 +219,23 @@ function App() {
         <div className="cards-area">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 className="panel-title" style={{ margin: 0 }}>Discover Ideas</h2>
-            <span className="badge badge-outline">{sortedIdeas.length} {sortedIdeas.length === 1 ? 'Idea' : 'Ideas'}</span>
+            <span className="badge badge-outline">{filteredIdeas.length} {filteredIdeas.length === 1 ? 'Idea' : 'Ideas'}</span>
           </div>
 
-          {sortedIdeas.length > 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>Loading ideas...</div>
+          ) : filteredIdeas.length > 0 ? (
             <div className="cards-grid">
-              {sortedIdeas.map(idea => (
-                <IdeaCard key={idea.id} idea={idea} onUpvote={() => handleUpvote(idea.id)} />
+              {filteredIdeas.map(idea => (
+                <div key={idea.id} onClick={() => handleView(idea.id)}>
+                  <IdeaCard
+                    idea={idea}
+                    user={{ uid: user.id }} // Maintain compatibility with previous favoriting logic using .uid
+                    onUpvote={() => handleUpvote(idea.id)}
+                    onEdit={idea.userId === user.id ? () => handleOpenForm(idea) : null}
+                    onFavorite={() => handleFavorite(idea)}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -201,7 +243,7 @@ function App() {
               <Rocket size={48} />
               <h3>No ideas found</h3>
               <p>Try adjusting your search or filters, or submit a new idea!</p>
-              <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => setIsFormOpen(true)}>
+              <button className="btn-primary" style={{ marginTop: '1rem' }} onClick={() => handleOpenForm()}>
                 <Plus size={20} />
                 Submit Idea
               </button>
@@ -212,10 +254,13 @@ function App() {
 
       {isFormOpen && (
         <IdeaForm
-          onClose={() => setIsFormOpen(false)}
+          defaultIdea={editingIdea}
+          onClose={handleCloseForm}
           onSubmit={handleAddIdea}
         />
       )}
+
+      <ChatBot />
     </div>
   );
 }

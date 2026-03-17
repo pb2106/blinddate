@@ -1,6 +1,6 @@
 import { ArrowUp, Target, TrendingUp, Cpu } from 'lucide-react';
 
-function IdeaCard({ idea, onUpvote }) {
+function IdeaCard({ idea, onUpvote, onDelete, onEdit, onFavorite, user }) {
     const diffClass = `diff-${idea.difficulty}`;
     const diffBgClass = `diff-bg-${idea.difficulty}`;
 
@@ -30,10 +30,23 @@ function IdeaCard({ idea, onUpvote }) {
 
             <p className="card-desc">{idea.description}</p>
 
-            <div style={{ background: 'var(--bg-base)', padding: '0.8rem', borderRadius: '0.5rem', borderLeft: '3px solid var(--accent-primary)' }}>
+            <div style={{ background: 'var(--bg-base)', padding: '0.8rem', borderRadius: '0.5rem', borderLeft: '3px solid var(--accent-primary)', marginBottom: '1rem' }}>
                 <p className="card-problem">
                     <strong>Problem: </strong> {idea.problemStatement}
                 </p>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                <div>
+                    <div>Posted: {new Date(idea.createdAt).toLocaleDateString()}</div>
+                    {idea.updatedAt && idea.updatedAt !== idea.createdAt && (
+                        <div>Updated: {new Date(idea.updatedAt).toLocaleDateString()}</div>
+                    )}
+                </div>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    {idea.views !== undefined && <span>👁 {idea.views}</span>}
+                    {idea.isArchived && <span style={{ color: 'var(--diff-5)', fontWeight: 'bold' }}>Archived</span>}
+                </div>
             </div>
 
             <div className="card-footer">
@@ -55,14 +68,66 @@ function IdeaCard({ idea, onUpvote }) {
                     </div>
                 </div>
 
-                <button
-                    className={`upvote-btn ${idea.upvotes > 0 ? 'voted' : ''}`}
-                    onClick={onUpvote}
-                    aria-label="Upvote"
-                >
-                    <ArrowUp size={16} />
-                    {idea.upvotes}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        className={`action-btn ${idea.favoritedBy?.[user?.uid] ? 'favorited' : ''}`}
+                        onClick={() => onFavorite(idea)}
+                        aria-label="Favorite idea"
+                        style={{
+                            padding: '0.3rem 0.6rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            background: idea.favoritedBy?.[user?.uid] ? 'rgba(236, 72, 153, 0.1)' : 'transparent',
+                            color: idea.favoritedBy?.[user?.uid] ? '#ec4899' : 'var(--text-secondary)',
+                            border: `1px solid ${idea.favoritedBy?.[user?.uid] ? '#ec4899' : 'var(--border-color)'}`,
+                            borderRadius: '9999px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
+                        }}
+                    >
+                        <span style={{ color: idea.favoritedBy?.[user?.uid] ? '#ec4899' : 'currentColor' }}>♥</span>
+                    </button>
+                    {onDelete && (
+                        <>
+                            <button
+                                className="action-btn"
+                                onClick={onEdit}
+                                aria-label="Edit idea"
+                                style={{
+                                    padding: '0.3rem 0.5rem',
+                                    background: 'transparent',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '9999px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem'
+                                }}
+                            >
+                                Edit
+                            </button>
+                            <button
+                                className="btn-danger"
+                                onClick={onDelete}
+                                aria-label="Delete idea"
+                                style={{ padding: '0.3rem 0.5rem' }}
+                            >
+                                Delete
+                            </button>
+                        </>
+                    )}
+                    <button
+                        className={`upvote-btn ${idea.upvotes > 0 ? 'voted' : ''}`}
+                        onClick={onUpvote}
+                        aria-label="Upvote"
+                    >
+                        <ArrowUp size={16} />
+                        {idea.upvotes}
+                    </button>
+                </div>
             </div>
         </div>
     );
