@@ -248,7 +248,7 @@ app.use('/api', (req, res) => {
 });
 
 // Full-Stack Magic: Route any other non-API requests to the React Frontend!
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
